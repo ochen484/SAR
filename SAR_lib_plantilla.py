@@ -208,19 +208,33 @@ class SAR_Indexer:
                      
         
 
-    def create_kdtree(self):
-        """
-        
-        Crea el tktree utilizando un objeto de la librería SAR_semantics
-        Solo se debe crear una vez despues de indexar todos los documentos
-        
-        # 1: Se debe llamar al método fit del modelo semántico
-        # 2: Opcionalmente se puede guardar información del modelo semántico (kdtree y/o embeddings) en el SAR_Indexer
-        
-        """
-        print(f"Creating kdtree ...", end="")
-	    # completar
-        print("done!")
+   #Oscar
+    
+def create_kdtree(self):
+    """
+    Crea el KDTree utilizando el modelo semántico cargado.
+    Solo se debe llamar una vez, tras indexar todos los documentos.
+
+    Pasos:
+        1 - Cargar el modelo semántico (si no está cargado)
+        2 - Llamar al método fit del modelo con la lista de chuncks
+        3 - Guardar el kdtree y los embeddings generados en el indexer
+    """
+    print(f"Creating kdtree ...", end="")
+
+    # 1 - Cargar el modelo si no está ya cargado
+    self.load_semantic_model()
+
+    # 2 - Ajustar el modelo con todos los chuncks acumulados
+    #     fit() construye internamente el KDTree a partir de los embeddings
+    self.model.fit(self.chuncks)
+
+    # 3 - Guardar referencias al kdtree y los embeddings para consultas posteriores
+    #     y para que save_info() los serialice junto con el resto del índice
+    self.kdtree = self.model.kdtree        # estructura KDTree ya construida
+    self.embeddings = self.model.embeddings  # vectores densos de cada chunck
+
+    print("done!")
 
 
         
