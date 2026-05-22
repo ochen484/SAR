@@ -363,7 +363,7 @@ def create_kdtree(self):
 
         return article
 
-
+#Oscar
     def index_file(self, filename: str):
     """
     Indexa el contenido de un fichero.
