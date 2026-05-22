@@ -300,39 +300,67 @@ def create_kdtree(self):
         """
         return article['url'] in self.urls
 
+#Oscar
+    def index_file(self, filename: str):
+    """
+    Indexa el contenido de un fichero.
 
-    def index_dir(self, root:str, **args):
-        """
+    input: "filename" es el nombre de un fichero generado por el Crawler;
+           cada línea es un objeto json con la información de un artículo de Wikipedia.
 
-        Recorre recursivamente el directorio o fichero "root"
-        NECESARIO PARA TODAS LAS VERSIONES
+    NECESARIO PARA TODAS LAS VERSIONES
 
-        Recorre recursivamente el directorio "root"  y indexa su contenido
-        los argumentos adicionales "**args" solo son necesarios para las funcionalidades ampliadas
+    dependiendo del valor de self.positional se debe ampliar el indexado
+    """
 
-        """
-        self.positional = args['positional']
-        self.semantic = args['semantic']
-        if self.semantic is True:
-            self.load_semantic_model()
+    # Asignar un docid único a este fichero si no lo tiene aún
+    docid = len(self.docs)
+    self.docs[docid] = filename
 
+    for i, line in enumerate(open(filename)):
+        j = self.parse_article(line)
 
-        file_or_dir = Path(root)
+        # Saltar artículos con URL duplicada
+        if self.already_in_index(j):
+            continue
 
-        if file_or_dir.is_file():
-            # is a file
-            self.index_file(root)
-        elif file_or_dir.is_dir():
-            # is a directory
-            for d, _, files in os.walk(root):
-                for filename in sorted(files):
-                    if filename.endswith('.json'):
-                        fullname = os.path.join(d, filename)
-                        self.index_file(fullname)
+        # Registrar la URL para evitar duplicados
+        self.urls.add(j['url'])
+
+        # Asignar un artid único: entero secuencial global
+        artid = len(self.articles)
+
+        # Guardar info del artículo: (docid, posición relativa en el fichero, url, título)
+        self.articles[artid] = (docid, i, j['url'], j['title'])
+
+        # Tokenizar el campo por defecto ('all')
+        tokens = self.tokenize(j[self.DEFAULT_FIELD])
+
+        if self.positional:
+            # Índice posicional: posting list con listas de posiciones
+            # Estructura: index[term] = { artid: [pos1, pos2, ...], ... }
+            for pos, token in enumerate(tokens):
+                if token not in self.index:
+                    self.index[token] = {}
+                if artid not in self.index[token]:
+                    self.index[token][artid] = []
+                self.index[token][artid].append(pos)
         else:
-            print(f"ERROR:{root} is not a file nor directory!", file=sys.stderr)
-            sys.exit(-1)
+            # Índice básico: posting list como lista ordenada de artids
+            # Estructura: index[term] = [artid1, artid2, ...]
+            seen = set()
+            for token in tokens:
+                if token not in self.index:
+                    self.index[token] = []
+                if artid not in seen:
+                    self.index[token].append(artid)
+                    seen.add(token)
 
+        # Ampliación semántica: extraer frases del artículo y almacenarlas
+        if self.semantic:
+            self.update_chuncks(j[self.DEFAULT_FIELD], artid)
+
+    
         #####################################################
         ## COMPLETAR SI ES NECESARIO FUNCIONALIDADES EXTRA ##
         #####################################################
