@@ -514,22 +514,72 @@ def create_kdtree(self):
         pass
 
 
+#Oscar
+    def get_positionals(self, terms: list):
+    """
+    Devuelve la posting list asociada a una secuencia de términos consecutivos.
+    NECESARIO PARA LAS BÚSQUEDAS POSICIONALES
 
-    def get_positionals(self, terms:str):
-        """
+    param:  "terms": lista con los términos consecutivos para recuperar la posting list.
 
-        Devuelve la posting list asociada a una secuencia de terminos consecutivos.
-        NECESARIO PARA LAS BÚSQUESAS POSICIONALES
+    return: posting list (lista ordenada de artids que contienen los términos consecutivos)
+    """
 
-        param:  "terms": lista con los terminos consecutivos para recuperar la posting list.
+    if not terms:
+        return []
 
-        return: posting list
+    # Obtener el índice posicional del primer término
+    # self.index[term] = { artid: [pos1, pos2, ...] }
+    if terms[0] not in self.index:
+        return []
 
-        """
+    # Candidatos iniciales: artículos que contienen el primer término
+    # Trabajamos con diccionarios {artid: [posiciones]} para poder cruzar posiciones
+    current = dict(self.index[terms[0]])  # copia: {artid: [pos_t0, ...]}
 
-        #################################
-        ## COMPLETAR PARA POSICIONALES ##
-        #################################
+    for offset, term in enumerate(terms[1:], start=1):
+        # Si el término no existe en el índice, no hay resultados
+        if term not in self.index:
+            return []
+
+        next_term_index = self.index[term]  # {artid: [pos_t_offset, ...]}
+        new_current = {}
+
+        for artid, positions in current.items():
+            if artid not in next_term_index:
+                # Este artículo no contiene el término actual: descartarlo
+                continue
+
+            # Buscar posiciones del término actual que sean exactamente
+            # (posición_término_anterior + 1), es decir, consecutivas
+            # Usamos merge tipo two-pointer para eficiencia (como el AND de teoría)
+            consecutive_positions = []
+            pos_next = next_term_index[artid]
+
+            i, k = 0, 0
+            while i < len(positions) and k < len(pos_next):
+                # La posición esperada del término actual es pos_anterior + offset
+                # pero como comparamos siempre con el acumulado anterior,
+                # basta con comprobar pos_next == positions[i] + 1
+                expected = positions[i] + 1
+                if pos_next[k] == expected:
+                    consecutive_positions.append(pos_next[k])
+                    i += 1
+                    k += 1
+                elif pos_next[k] < expected:
+                    k += 1
+                else:
+                    i += 1
+
+            if consecutive_positions:
+                # Guardamos las posiciones del término actual como nuevo "ancla"
+                # para el siguiente término de la secuencia
+                new_current[artid] = consecutive_positions
+
+        current = new_current
+
+    # Devolver lista ordenada de artids (posting list estándar)
+    return sorted(current.keys())
         pass
 
 
