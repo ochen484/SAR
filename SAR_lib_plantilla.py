@@ -421,13 +421,7 @@ def create_kdtree(self):
 
         # Ampliación semántica: extraer frases del artículo y almacenarlas
         if self.semantic:
-            self.update_chuncks(j[self.DEFAULT_FIELD], artid)
-        #
-        #
-        #
-        #################
-        ### COMPLETAR ###
-        #################
+            self.update_chuncks(j[self.DEFAULT_FIELD], artid) 
 
 
     def tokenize(self, text:str):
