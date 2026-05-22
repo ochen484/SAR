@@ -364,27 +364,64 @@ def create_kdtree(self):
         return article
 
 
-    def index_file(self, filename:str):
-        """
+    def index_file(self, filename: str):
+    """
+    Indexa el contenido de un fichero.
 
-        Indexa el contenido de un fichero.
+    input: "filename" es el nombre de un fichero generado por el Crawler;
+           cada línea es un objeto json con la información de un artículo de Wikipedia.
 
-        input: "filename" es el nombre de un fichero generado por el Crawler cada línea es un objeto json
-            con la información de un artículo de la Wikipedia
+    NECESARIO PARA TODAS LAS VERSIONES
 
-        NECESARIO PARA TODAS LAS VERSIONES
+    dependiendo del valor de self.positional se debe ampliar el indexado
+    """
 
-        dependiendo del valor de self.positional se debe ampliar el indexado
+    # Asignar un docid único a este fichero si no lo tiene aún
+    docid = len(self.docs)
+    self.docs[docid] = filename
 
-        """
+    for i, line in enumerate(open(filename)):
+        j = self.parse_article(line)
 
-        for i, line in enumerate(open(filename)):
-            j = self.parse_article(line)
+        # Saltar artículos con URL duplicada
+        if self.already_in_index(j):
+            continue
 
+        # Registrar la URL para evitar duplicados
+        self.urls.add(j['url'])
 
-        #
-        # 
-        # Solo se debe indexar el contenido self.DEFAULT_FIELD
+        # Asignar un artid único: entero secuencial global
+        artid = len(self.articles)
+
+        # Guardar info del artículo: (docid, posición relativa en el fichero, url, título)
+        self.articles[artid] = (docid, i, j['url'], j['title'])
+
+        # Tokenizar el campo por defecto ('all')
+        tokens = self.tokenize(j[self.DEFAULT_FIELD])
+
+        if self.positional:
+            # Índice posicional: posting list con listas de posiciones
+            # Estructura: index[term] = { artid: [pos1, pos2, ...], ... }
+            for pos, token in enumerate(tokens):
+                if token not in self.index:
+                    self.index[token] = {}
+                if artid not in self.index[token]:
+                    self.index[token][artid] = []
+                self.index[token][artid].append(pos)
+        else:
+            # Índice básico: posting list como lista ordenada de artids
+            # Estructura: index[term] = [artid1, artid2, ...]
+            seen = set()
+            for token in tokens:
+                if token not in self.index:
+                    self.index[token] = []
+                if artid not in seen:
+                    self.index[token].append(artid)
+                    seen.add(token)
+
+        # Ampliación semántica: extraer frases del artículo y almacenarlas
+        if self.semantic:
+            self.update_chuncks(j[self.DEFAULT_FIELD], artid)
         #
         #
         #
