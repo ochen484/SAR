@@ -224,26 +224,23 @@ class SAR_Indexer:
         """
         print(f"Creating kdtree ...", end="")
 
-        # 1 - Cargar el modelo si no está ya cargado
+        
         self.load_semantic_model()
         if self.model is None:
             print("ERROR, no se cargo el modelo", file=sys.stderr)
             return
 
-        # 2 - Ajustar el modelo con todos los chuncks acumulados
-        #     fit() construye internamente el KDTree a partir de los embeddings
+       
         self.model.fit(self.chuncks)
 
-        # 3 - Guardar referencias al kdtree y los embeddings para consultas posteriores
-        #     y para que save_info() los serialice junto con el resto del índice
-        self.kdtree = self.model.kdtree        # estructura KDTree ya construida
-        self.embeddings = self.model.embeddings  # vectores densos de cada chunck
-
+       
+        self.kdtree = self.model.kdtree       
+        self.embeddings = self.model.embeddings  
         print("done!")
 
 
     #Oscar    
-    def solve_semantic_query(self, query:str): #REVISAR ESTE METODO
+    def solve_semantic_query(self, query:str): 
         """
 
         Resuelve una consulta utilizando el modelo semántico.
@@ -258,38 +255,26 @@ class SAR_Indexer:
 
         self.load_semantic_model()
         if self.model is None:
-            return []  # no se pudo cargar el modelo, no hay resultados
+            return [] 
        
-        top_k = self.MAX_EMBEDDINGS  # empezamos pidiendo 200 resultados
-        total_chunks = len(self.chuncks)    # máximo posible
-
-        while True:
-          # Paso 1 y 2: consultar el KDTree con top_k vecinos más cercanos
-          # Devuelve lista de (distancia, índice_chunk)
+        top_k = self.MAX_EMBEDDINGS  
+        total_chunks = len(self.chuncks)   
+        results = self.model.query(query, top_k)
+        while (self.semantic_threshold is not None
+            and len(results) > 0
+            and results[-1][0] <= self.semantic_threshold
+            and top_k < total_chunks):
+            top_k = min(top_k * 2, total_chunks)
             results = self.model.query(query, top_k)
 
-         # Paso 3: ¿el último resultado está dentro del umbral?
-         # Si la distancia del último es <= threshold, puede haber más → ampliar top_k
-            if (self.semantic_threshold is not None
-                and len(results) > 0
-                and results[-1][0] <= self.semantic_threshold
-                and top_k < total_chunks):
-                top_k = min(top_k * 2, total_chunks)  # doblar y reintentar
-                continue
 
-         # Paso 4: salir si ya recuperamos todos los embeddings posibles
-            break
-
-        # Paso 5: filtrar por umbral y convertir chunks → artículos
         seen = set()
         articles = []
 
         for distance, chunk_idx in results:
-        # Si hay umbral, descartar los que superen la distancia máxima
          if self.semantic_threshold is not None and distance > self.semantic_threshold:
-            break  # los resultados vienen ordenados por distancia, podemos parar
-
-         artid = self.artid_to_emb[chunk_idx]  # chunk → artículo
+            break
+         artid = self.artid_to_emb[chunk_idx] 
 
          if artid not in seen:
             seen.add(artid)
@@ -298,7 +283,7 @@ class SAR_Indexer:
         return articles
 
     
-    def semantic_reranking(self, query:str, articles: List[int]): #REVISAR ESTE METODO
+    def semantic_reranking(self, query:str, articles: List[int]):
         """
 
         Ordena los articulos en la lista 'article' por similitud a la consulta 'query'.
@@ -317,32 +302,29 @@ class SAR_Indexer:
        
         top_k = self.MAX_EMBEDDINGS
         total_chunks = len(self.chuncks)
-        articles_set = set(articles)  # para búsqueda O(1)
+        articles_set = set(articles)  
+     
+        
 
-        while True:
-         # Paso 1 y 2: consultar el KDTree
-         results = self.model.query(query, top_k)
-
-          # Paso 3: convertir chunks recuperados a artículos
-         seen = set()
-         ranked_articles = []
-         for distance, chunk_idx in results:
-            artid = self.artid_to_emb[chunk_idx]
-            if artid in articles_set and artid not in seen:
-                seen.add(artid)
-                ranked_articles.append(artid)
-
-          # Paso 3 (condición): ¿están todos los artículos binarios en el ranking?
-          # Si faltan artículos y aún quedan chunks por explorar → ampliar top_k
-         if len(seen) < len(articles_set) and top_k < total_chunks:
+        seen = set()
+        ranked_articles = []
+        results = self.model.query(query, top_k)
+            
+        while len(seen) < len(articles_set) and top_k < total_chunks:
+            seen = set()
+            ranked_articles = []
+            for _, chunk_idx in results:
+                artid = self.artid_to_emb[chunk_idx]
+                if artid in articles_set and artid not in seen:
+                    seen.add(artid)
+                    ranked_articles.append(artid)
             top_k = min(top_k * 2, total_chunks)
-            continue
+            results = self.model.query(query, top_k)
 
-         # Paso 4: salir, tenemos el ranking o no hay más chunks que explorar
-         break
-
-     # Los artículos binarios que no aparecieron en el KDTree van al final
-        remaining = [a for a in articles if a not in seen]
+        remaining = []
+        for a in articles:
+            if a not in seen:
+                remaining.append(a)
 
         return ranked_articles + remaining
     
@@ -456,18 +438,15 @@ class SAR_Indexer:
         # Registrar la URL para evitar duplicados
         self.urls.add(j['url'])
 
-        # Asignar un artid único: entero secuencial global
         artid = len(self.articles)
 
-        # Guardar info del artículo: (docid, posición relativa en el fichero, url, título)
+        # Guardar info del artículo
         self.articles[artid] = (docid, i, j['url'], j['title'])
 
-        # Tokenizar el campo por defecto ('all')
         tokens = self.tokenize(j[self.DEFAULT_FIELD])
 
         if self.positional:
             # Índice posicional: posting list con listas de posiciones
-            # Estructura: index[term] = { artid: [pos1, pos2, ...], ... }
             for pos, token in enumerate(tokens):
                 if token not in self.index:
                     self.index[token] = {}
@@ -475,8 +454,6 @@ class SAR_Indexer:
                     self.index[token][artid] = []
                 self.index[token][artid].append(pos)
         else:
-            # Índice básico: posting list como lista ordenada de artids
-            # Estructura: index[term] = [artid1, artid2, ...]
             seen = set()
             for token in tokens:
                 if token not in self.index:
@@ -485,7 +462,6 @@ class SAR_Indexer:
                     self.index[token].append(artid)
                     seen.add(artid)
 
-        # Ampliación semántica: extraer frases del artículo y almacenarlas
         if self.semantic:
             self.update_chuncks(j[self.DEFAULT_FIELD], artid) 
 
@@ -521,8 +497,6 @@ class SAR_Indexer:
         print("Cantidad de términos indexados:", len(self.index))
 
         if self.positional:
-        # En posicional, cada término tiene un dict {artid: [posiciones]}
-        # La posting list total es la suma de artículos por término
             total_postings = sum(len(v) for v in self.index.values())
             print("Cantidad de total postings:", total_postings)
 
@@ -566,10 +540,8 @@ class SAR_Indexer:
         if query is None or len(query) == 0:
          return [], query  # resultado vacío para consulta vacía
 
-        result = None  # acumulador del AND
+        result = None  
 
-     # Tokenizar respetando comillas y NOT
-     # Usamos regex: detecta "frases entre comillas" o palabras sueltas
         tokens = re.findall(r'"[^"]+"|\S+', query)
 
         i = 0
@@ -585,7 +557,6 @@ class SAR_Indexer:
 
          token = tokens[i]
 
-         # ¿Es una frase entre comillas?
          if token.startswith('"') and token.endswith('"'):
             # Búsqueda posicional
             terms = self.tokenize(token[1:-1])  # quitar comillas y tokenizar
@@ -594,11 +565,9 @@ class SAR_Indexer:
             # Término simple
             posting = self.get_posting(token)
 
-          # Aplicar NOT si corresponde
          if negate:
             posting = self.reverse_posting(posting)
 
-         # AND acumulativo
          if result is None:
             result = posting
          else:
@@ -625,10 +594,8 @@ class SAR_Indexer:
         NECESARIO PARA TODAS LAS VERSIONES
 
         """
-       # Normalizar el término igual que en la indexación
         term = term.lower()
         if self.positional:
-        # En posicional el índice es {artid: [pos1,...]}, devolvemos lista de artids
              return sorted(self.index[term].keys()) if term in self.index else []
         else:
              return self.index.get(term, [])
@@ -649,39 +616,28 @@ class SAR_Indexer:
         return []
 
     # Obtener el índice posicional del primer término
-    # self.index[term] = { artid: [pos1, pos2, ...] }
      if terms[0] not in self.index:
         return []
 
-    # Candidatos iniciales: artículos que contienen el primer término
-    # Trabajamos con diccionarios {artid: [posiciones]} para poder cruzar posiciones
      
-     current = dict(self.index[terms[0]])  # copia: {artid: [pos_t0, ...]}
+     current = dict(self.index[terms[0]])  
 
-     for offset, term in enumerate(terms[1:], start=1):
-        # Si el término no existe en el índice, no hay resultados
+     for term in terms[1:]:
         if term not in self.index:
             return []
 
-        next_term_index = self.index[term]  # {artid: [pos_t_offset, ...]}
+        next_term_index = self.index[term] 
         new_current = {}
 
         for artid, positions in current.items():
             if artid not in next_term_index:
-                # Este artículo no contiene el término actual: descartarlo
                 continue
 
-            # Buscar posiciones del término actual que sean exactamente
-            # (posición_término_anterior + 1), es decir, consecutivas
-            # Usamos merge tipo two-pointer para eficiencia (como el AND de teoría)
             consecutive_positions = []
             pos_next = next_term_index[artid]
 
             i, k = 0, 0
             while i < len(positions) and k < len(pos_next):
-                # La posición esperada del término actual es pos_anterior + offset
-                # pero como comparamos siempre con el acumulado anterior,
-                # basta con comprobar pos_next == positions[i] + 1
                 expected = positions[i] + 1
                 if pos_next[k] == expected:
                     consecutive_positions.append(pos_next[k])
@@ -693,13 +649,10 @@ class SAR_Indexer:
                     i += 1
 
             if consecutive_positions:
-                # Guardamos las posiciones del término actual como nuevo "ancla"
-                # para el siguiente término de la secuencia
                 new_current[artid] = consecutive_positions
 
         current = new_current
 
-    # Devolver lista ordenada de artids (posting list estándar)
      return sorted(current.keys())
     pass
 
@@ -721,14 +674,12 @@ class SAR_Indexer:
 
         """
         
-        # Todos los artids existentes menos los de p
-        # Two-pointer para eficiencia
         all_articles = sorted(self.articles.keys())
         result = []
         i, j = 0, 0
         while i < len(all_articles):
          if j < len(p) and all_articles[i] == p[j]:
-            j += 1  # está en p, lo saltamos
+            j += 1  
          else:
             result.append(all_articles[i])
          i += 1
@@ -830,7 +781,7 @@ class SAR_Indexer:
 
         return not errors
 
-    #REVISAR ESTE MEOTODO
+  
     def solve_and_show(self, query:str):
         """
         Hector
@@ -850,14 +801,12 @@ class SAR_Indexer:
             result = []
         total = len(result)
 
-          # Limitar resultados si show_all es False
         to_show = result if self.show_all else result[:self.SHOW_MAX]
 
         print(f"Query: {query}")
         print(f"Number of results: {total}")
 
         for order, artid in enumerate(to_show, start=1):
-            # self.articles[artid] = (docid, pos_en_fichero, url, title)
            _, _, url, title = self.articles[artid]
            print(f"  {order}\t{artid}\t{title}\t{url}")
 
