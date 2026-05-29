@@ -203,9 +203,9 @@ class SAR_Indexer:
         #2 - 
         for frase in frases:
             indice = len(self.chuncks)
-            self.chuncks.append(frase)
-            self.chunck_index.append(indice)
-            self.artid_to_emb[indice] = artid
+            self.chuncks.append(frase) #lista plana de todas las frases de todos los articulos, el indice de cada frase es su posicion en esta lista
+            self.chunck_index.append(indice) #Registra pos
+            self.artid_to_emb[indice] = artid #mapea el indice del chunk con el artid del articulo al que peretence. Se usara en el KDTree  
 
                      
         
@@ -257,25 +257,24 @@ class SAR_Indexer:
         if self.model is None:
             return [] 
        
-        top_k = self.MAX_EMBEDDINGS  
+        top_k = self.MAX_EMBEDDINGS  #Nº max de resultados a recuperar del KDTree, puede aumentar si no hay resultados imp
         total_chunks = len(self.chuncks)   
         results = self.model.query(query, top_k)
-        while (self.semantic_threshold is not None
-            and len(results) > 0
-            and results[-1][0] <= self.semantic_threshold
-            and top_k < total_chunks):
-            top_k = min(top_k * 2, total_chunks)
-            results = self.model.query(query, top_k)
+        while (self.semantic_threshold is not None #Tenemos umbral semntico definido
+            and len(results) > 0 #Hay resultados
+            and results[-1][0] <= self.semantic_threshold #Los resultados no superan el umbral semantico, es decir, el último resultado tiene una distancia menor o igual al umbral, por lo tanto no se han recuperado todos los resultados relevantes
+            and top_k < total_chunks): #Aun podriamos recuperar mas resultados porque no hemos llegado al máximo de embeddings disponibles
+            top_k = min(top_k * 2, total_chunks) #Como todavia quedan resultados por recuperar doblamos el top_k (capado a total_chunks)
+            results = self.model.query(query, top_k) #Una vez doblada la variable relanzamos la consulta para recuperar mas resultados  
 
 
-        seen = set()
+        seen = set() #Variable local para evitar repetir articulos  
         articles = []
 
-        for distance, chunk_idx in results:
-         if self.semantic_threshold is not None and distance > self.semantic_threshold:
+        for distance, chunk_idx in results: #distance y chunk_idx son elementos de la tupla q devuelve query. Distance: dtca semantica entre la consulta y el chunk, chunk_idx: indice del chunk en self.chuncks
+         if self.semantic_threshold is not None and distance > self.semantic_threshold: #Si nos hemos pasado del umbral semantic paramos, no nos sirven los results
             break
-         artid = self.artid_to_emb[chunk_idx] 
-
+         artid = self.artid_to_emb[chunk_idx] #mapea el indice del chunk con el artid del articulo al que peretence. 
          if artid not in seen:
             seen.add(artid)
             articles.append(artid)
@@ -308,7 +307,7 @@ class SAR_Indexer:
 
         seen = set()
         ranked_articles = []
-        results = self.model.query(query, top_k)
+        results = self.model.query(query, top_k) #lista de (dtca y chunk_idx) ordenada de menor a mayor
             
         while len(seen) < len(articles_set) and top_k < total_chunks:
             #Resetear los vistos y el ranking para cada iteración. Consultamos la iteración anterior (en el for)
