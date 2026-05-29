@@ -1,4 +1,4 @@
-# versión 1.2
+ # versión 1.2
 
 import json
 import os
@@ -464,8 +464,7 @@ class SAR_Indexer:
                     seen.add(artid)
 
         if self.semantic:
-            self.update_chuncks(j[self.DEFAULT_FIELD], artid) 
-
+            self.update_chuncks(j[self.DEFAULT_FIELD], artid) #DEFAULT_FILED decide que elemnto es relevante para la indexacion (URL, title, summary, all).
 
     def tokenize(self, text:str):
         """
