@@ -577,7 +577,8 @@ class SAR_Indexer:
 
          i += 1
 
-        return (result if result is not None else []), query
+        return (result if result is not None else []), query #Este caso cubre la posibilidad de que la query sea solo "NOT". 
+        #En el caso de solo "NOT" se activa el flag "negate" pero como no hay más tokens hace break y result sigue siendo None, por eso devolvemos la lista vacía []
 
 
 
@@ -598,8 +599,12 @@ class SAR_Indexer:
         """
         term = term.lower()
         if self.positional:
-             return sorted(self.index[term].keys()) if term in self.index else []
+             #Si el termino esta en el indice, devuelve la lista de artids ordenada. Si no esta devuelve una lista vacia.
+             return sorted(self.index[term].keys()) if term in self.index else [] #.keys() devuelve los artids (id articulos)
+            #Sorted ordena las .keys(), es decir, los artids, de forma creciente. De menor a mayor. 
+            #Que este ordenada importa para metodos como and_posting y/o  reverse_posting
         else:
+             #self.index ya es una lista de artids ordenada, si el termino esta en el indice devuelve esa lista, si no esta devuelve una lista vacia.
              return self.index.get(term, [])
 
 
@@ -622,41 +627,41 @@ class SAR_Indexer:
         return []
 
      
-     current = dict(self.index[terms[0]])  
+     current = dict(self.index[terms[0]])   #Creamos una copia del dicc para no mod el original. Se ira reduciendo con cada iteracion
 
-     for term in terms[1:]:
+     for term in terms[1:]: #2do elemento en adelante   
         if term not in self.index:
-            return []
+            return [] #Si el termino no esta en el indice no existe la secuencia completa, por lo tanto devolvemos lista vacia
 
-        next_term_index = self.index[term] 
-        new_current = {}
+        next_term_index = self.index[term] #Guardo el termino siguiente para comparar con el actual
+        new_current = {} #Dicc dnd guardo solo aquellos que superen el filtro de consecutividad, se ira actualizando con cada iteracion
 
-        for artid, positions in current.items():
+        for artid, positions in current.items(): #artid, pos es una tupla 2 elementos, artid es el id del articulo y positions es la lista de posiciones del termino actual en ese articulo
             if artid not in next_term_index:
                 continue
 
-            consecutive_positions = []
-            pos_next = next_term_index[artid]
+            consecutive_positions = [] #array que guarda las pos consecutivas del siguiente termino, se va actualizando con cada iteracion
+            pos_next = next_term_index[artid] #las pos dnd aparace el term. Evitara acceder al ind original, una copia local
 
             i, k = 0, 0
             while i < len(positions) and k < len(pos_next):
-                expected = positions[i] + 1
-                if pos_next[k] == expected:
+                expected = positions[i] + 1 #La posición esperada del siguiente término es la posición actual + 1, porque deben ser consecutivos
+                if pos_next[k] == expected: #Coinciden, se añade a la lista de posiciones consecutivas y se avanza en ambos
                     consecutive_positions.append(pos_next[k])
                     i += 1
                     k += 1
-                elif pos_next[k] < expected:
+                elif pos_next[k] < expected: #Aqui pues si nos hemos quedao cortos avanzamos k 
                     k += 1
-                else:
+                else: #Si nos hemos pasado avanzamos i
                     i += 1
 
-            if consecutive_positions:
+            if consecutive_positions: #comprueba que hay elementos consecutivos y los añade al nuevo dicc. Si no el artid se descarta
                 new_current[artid] = consecutive_positions
 
-        current = new_current
+        current = new_current #actualizamos el las posiciones actuales con las consecutivas del siguiente término, se irá reduciendo con cada iteracion
 
-     return sorted(current.keys())
-    pass
+     return sorted(current.keys()) #Posting list ordenadas por artids   
+
 
 
 
@@ -678,12 +683,12 @@ class SAR_Indexer:
         
         all_articles = sorted(self.articles.keys())
         result = []
-        i, j = 0, 0
+        i, j = 0, 0 #i para avanzar en all_articles, j para avanzar en p
         while i < len(all_articles):
-         if j < len(p) and all_articles[i] == p[j]:
-            j += 1  
+         if j < len(p) and all_articles[i] == p[j]: #si no me he pasado de len y el artid actual es igual al de p[j], es decir, el artid esta en p.
+            j += 1   #Entonces no hago nada y avanzo pq este metodo es como un NOT
          else:
-            result.append(all_articles[i])
+            result.append(all_articles[i]) #El artid actual no esta en p, me sirve por ende lo añado
          i += 1
         return result
 
@@ -702,17 +707,18 @@ class SAR_Indexer:
         return: posting list con los artid incluidos en p1 y p2
 
         """
+        #Estamos suponiendo posting lists ordenadas
         result = []
         i, j = 0, 0
         while i < len(p1) and j < len(p2):
          if p1[i] == p2[j]:
-            result.append(p1[i])
+            result.append(p1[i]) #son iguales, avanzo ambos y añado a resultado
             i += 1
             j += 1
-         elif p1[i] < p2[j]:
+         elif p1[i] < p2[j]: #como p1[i] es menor avanzo i mantengo j 
             i += 1
          else:
-            j += 1
+            j += 1 #Viceversa
         return result
 
 
@@ -798,21 +804,29 @@ class SAR_Indexer:
         """
           # Obtener la posting list
         
-        result, _ = self.solve_query(query)
+        result, _ = self.solve_query(query) #descartamos la query procesada que devuelve solve_query, solo nos interesa la posting list result
         if result is None:
-            result = []
+            result = [] #en teoria no deberia pasar pq solve_query devuelve [] si no hay resultados, pero por si acaso lo ponemos para evitar errores al hacer len(result) mas adelante
         total = len(result)
 
-        to_show = result if self.show_all else result[:self.SHOW_MAX]
+        to_show = result if self.show_all else result[:self.SHOW_MAX] #Si show_all es True mostramos todos los resultados, si no mostramos solo los primeros SHOW_MAX resultados
 
         print(f"Query: {query}")
-        print(f"Number of results: {total}")
+        print(f"Number of results: {total}") #aunque no se muestren todos si que incluimos el nº total
 
-        for order, artid in enumerate(to_show, start=1):
-           _, _, url, title = self.articles[artid]
-           print(f"  {order}\t{artid}\t{title}\t{url}")
+        for order, artid in enumerate(to_show, start=1): #Enumerate nos devuelve pares (order, artid) donde empieza en 1 (start=1) y aumenta 1 por cada elemento de to_show
+           _, _, url, title = self.articles[artid] #Esto es una tupla de 4 elementos (docid, pos, url, title) y nos quedamos con el url y el title para mostrar al usuario
+           #Es lo que viene de index_file
+           print(f"  {order}\t{artid}\t{title}\t{url}") #\t son columnas
 
         return total
+        """
+        Por ejemplo con to_show = [5, 23, 47]:
+            (1, 5) (order, artid) = (1, 5) => muestra el artículo con artid 5 y lo ordena como 1
+            (2, 23)
+            (3, 47) 
+        
+        """
 
 
 
